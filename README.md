@@ -8,7 +8,7 @@ If you need to install the legacy version, you can do so with:
 ```bash
 pip install git+https://github.com/GerbenBeintema/deepSI@legacy
 ```
-and by using the legacy documentation available at [https://github.com/GerbenBeintema/deepSI/tree/legacy](https://github.com/GerbenBeintema/deepSI/tree/legacy).
+and using the legacy documentation provided in [https://github.com/MaartenSchoukens/deepSI/tree/legacy](https://github.com/MaartenSchoukens/deepSI/tree/legacy).
 
 ## Example usage
 
