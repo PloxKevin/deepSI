@@ -38,7 +38,7 @@ def past_future_arrays(data : Input_output_data | list, na : int, nb : int, T : 
 
     Returns:
     - Tuple of Tensors: `(upast, ypast, ufuture, yfuture, [optional sampling_time])` where each array is shaped for efficient batch training.
-    - ids (Tensor): Indices for valid data samples, adjusted to avoid overlap when data is a list.
+    - ids (np.ndarray): Indices for valid data samples, adjusted to avoid overlap when data is a list of datasets.
     '''
 
     if T=='sim':

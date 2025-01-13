@@ -1,6 +1,6 @@
 # This document is used to generate the example that is seen in the README.md. 
 
-import deepSI_lite as dsi
+import deepSI as dsi
 import numpy as np
 
 # Generate data 
@@ -8,7 +8,7 @@ np.random.seed(0)
 ulist = np.random.randn(10_000) #input sequence
 x = [0, 0] #initial state
 ylist = [] #output sequence
-for uk in ulist:
+for uk in ulist: 
     ylist.append(x[1]*x[0]*0.1 + x[0] + np.random.randn()*1e-3)  #compute output
     x = x[0]/(1.2+x[1]**2) + x[1]*0.4, \
         x[1]/(1.2+x[0]**2) + x[0]*0.4 + uk*(1+x[0]**2/10) #advance state

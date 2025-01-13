@@ -84,9 +84,16 @@ def fit(model: nn.Module, train:Input_output_data, val:Input_output_data, n_its:
     fit_info = {'val_freq': val_freq, 'batch_size':batch_size}
     
     # Creat optimizer
-    model.to(device)
-    optimizer = torch.optim.Adam(model.parameters()) if optimizer==None else optimizer    
-
+    model.to(device); model.train()
+    optimizer = torch.optim.Adam(model.parameters()) if optimizer==None else optimizer
+    if device!=None and optimizer!=None: 
+        try: #check if both the optimizer and model are on the same device (this operation if it fails, should not halt process thus this weird try except structure is used)
+            assert optimizer.param_groups[0]['params'][0].device==next(model.parameters()).device, \
+                'Model and optimizer are on different devices, make sure to do the following: \n1. Create model, 2. Move model to device with .to(device), 3. Create desired optimizer, 4. Call .fit'
+        except AssertionError:
+            raise
+        except: print('### Warning could not check if optimizer and device are on the same device ###')
+    
     # Create training arrays
     arrays, indices = model.create_arrays(train, T=T, stride=stride) 
     print(f'Number of samples to train on = {len(indices)}')
@@ -96,7 +103,6 @@ def fit(model: nn.Module, train:Input_output_data, val:Input_output_data, n_its:
     arrays_val, indices = model.create_arrays(val, T='sim')
     arrays_val = [array_val[indices].to(device) for array_val in arrays_val]
     
-
     # Initalize all the monitors and best found models
     best_val, best_model, best_optimizer_state, loss_acc = float('inf'), deepcopy(model), deepcopy(optimizer.state_dict()), []
     NRMS_val, NRMS_train, time_usage_train = [], [], 0. #initialize the train and val monitor
@@ -126,12 +132,11 @@ def fit(model: nn.Module, train:Input_output_data, val:Input_output_data, n_its:
             ### Train Step ###
             start_t = time.time()
             loss = train_step(model, batch, optimizer)
-            time_usage_train += time.time()-start_t
+            time_usage_train += time.time() - start_t
 
             ### Post Train step ##
             if np.isnan(loss):
-                print('!!!!!!!!!!!!! Loss became NaN and training will be stopped !!!!!!!!!!!!!!')
-                break
+                raise ValueError('Loss became NaN and training will be terminate (see: "10.1 Recovering from a crash" from the example notebook)')
             loss_acc.append(loss) # add the loss the the loss accumulator
             progress_bar.set_description(f'Sqrt loss: {loss**0.5:.5f}', refresh=False)
     except KeyboardInterrupt:

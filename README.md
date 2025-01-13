@@ -1,19 +1,18 @@
 ## deepSI
 
-deepSI provides a lightweight pytorch based framework for data-driven learning of dynamical systems (i.e. system identification). It contains a large forcus on the SUBNET method which is able to robustly model many systems.
+deepSI provides a lightweight PyTorch-based framework for data-driven learning of dynamical systems (i.e., system identification). It focuses on the SUBNET method, which robustly models many systems. 
 
 ### ⚠️ deepSI has been refactored without backward compatibility (5 December 2024) ⚠️
 
-If you need to install the legacy version you can do this with 
+If you need to install the legacy version, you can do so with:
 ```bash
 pip install git+https://github.com/GerbenBeintema/deepSI@legacy
 ```
-and using the legacy documentation provided in [https://github.com/GerbenBeintema/deepSI/tree/legacy](https://github.com/GerbenBeintema/deepSI/tree/legacy).
+and by using the legacy documentation available at [https://github.com/GerbenBeintema/deepSI/tree/legacy](https://github.com/GerbenBeintema/deepSI/tree/legacy).
 
 ## Example usage
 
 ```python
-# Imports
 import numpy as np
 import deepSI as dsi
 
@@ -80,13 +79,13 @@ Check out [`examples/1. Overview deepSI.ipynb`](examples/1.%20Overview%20deepSI.
 
 ## Contributing
 
-deepSI is in ongoing development and anyone can contribute to any part of module.
+deepSI is under ongoing development, and contributions to any part of the module are welcome.
 
 ## todo list and known issues
 
-* Expand demonstration notebook with pHNN examples
-* Issue where discrete time is printed in Input_output_data with torch.Tensors, and np.arrays sample time.
-* General documentation 
-* known issue: CT SUBNET and DT SUBNET does not produce the correct initial when the sampling time is altered. (the encoder assumes that the sampling time does not change)
-* Possibel improvement: Improve speed with copy if enough memory is available. Also pre-transfer to GPU and maybe asyncroness getting of arrays.
-* Known issue: Using the compile function in `fit` will sometimes result in a memory leak
+ * Expand demonstration notebook with pHNN examples.
+ * Issue where discrete time is printed in `Input_output_data` with `torch.Tensors`, and `np.array` sample time.
+ * General documentation improvements.
+ * Known issue: CT SUBNET and DT SUBNET do not produce the correct initial state when the sampling time is altered (the encoder assumes the sampling time does not change).
+ * Possible improvement: Improve speed by copying if sufficient memory is available. Also, consider pre-transfer to GPU and asynchronous array retrieval.
+ * Known issue: Using the compile function in fit may result in a memory leak.
