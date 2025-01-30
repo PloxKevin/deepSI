@@ -108,7 +108,7 @@ def validate_SUBNET_structure(model):
             raise NotImplementedError(f'model validation of type {model} cannot be validated yet')
 
 ##############################
-#### Discrite time SUBNET ####
+#### Discrete time SUBNET ####
 ##############################
 # see: https://proceedings.mlr.press/v144/beintema21a/beintema21a.pdf or 
 # Beintema, Gerben, Roland Toth, and Maarten Schoukens. "Nonlinear state-space identification using deep encoder networks." Learning for dynamics and control. PMLR, 2021.
