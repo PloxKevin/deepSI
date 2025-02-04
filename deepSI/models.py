@@ -16,7 +16,7 @@ from warnings import warn
 
 def past_future_arrays(data : Input_output_data | list, na : int, nb : int, T : int | str, stride : int=1, add_sampling_time : bool=False):
     '''
-    This function extracts sections from the givne data as to be used in the SUBNET structure in the format (upast, ypast, ufuture, yfuture), ids. 
+    This function extracts sections from the given data as to be used in the SUBNET structure in the format (upast, ypast, ufuture, yfuture), ids. 
     
     For example for a sample [t] you will find that:
     npast = max(na,nb)
@@ -43,7 +43,7 @@ def past_future_arrays(data : Input_output_data | list, na : int, nb : int, T : 
 
     if T=='sim':
         if isinstance(data, (tuple,list)):
-            assert all(len(data[0])==len(d) for d in data), "if T='sim' than all given datasets need to have the same lenght (you should create the arrays in for loop instead)"
+            assert all(len(data[0])==len(d) for d in data), "if T='sim' then all given datasets need to have the same lenght (you should create the arrays in for loop instead)"
             T = len(data[0]) - max(na, nb)
         else:
             T = len(data) - max(na, nb)
@@ -108,7 +108,7 @@ def validate_SUBNET_structure(model):
             raise NotImplementedError(f'model validation of type {model} cannot be validated yet')
 
 ##############################
-#### Discrete time SUBNET ####
+#### Discrete-Time SUBNET ####
 ##############################
 # see: https://proceedings.mlr.press/v144/beintema21a/beintema21a.pdf or 
 # Beintema, Gerben, Roland Toth, and Maarten Schoukens. "Nonlinear state-space identification using deep encoder networks." Learning for dynamics and control. PMLR, 2021.
@@ -148,7 +148,7 @@ class SUBNET(nn.Module):
             x = self.f(x,u)
         xfuture = torch.stack(xfuture,dim=1) #has shape (Nbatch, Ntime=T, nx)
 
-        #compute output at all the future time indecies at the same time by combining the time and batch dim.
+        #compute output at all the future time indicies at the same time by combining the time and batch dim.
         fl = lambda ar: torch.flatten(ar, start_dim=0, end_dim=1) #conbine batch dim and time dim (Nbatch, Ntime, ...) -> (Nbatch*Ntim, ...)
         yfuture_sim_flat = self.h(fl(xfuture), fl(ufuture)) if self.feedthrough else self.h(fl(xfuture)) #compute the output for all time and and batches in one go
         return torch.unflatten(yfuture_sim_flat, dim=0, sizes=(B,T)) #(Nbatch*T, ...) -> (Nbatch, T, ...)
@@ -169,7 +169,7 @@ class SUBNET(nn.Module):
         return self.encoder(upast[None],ypast[None])[0]
 
 ################################
-#### Continuous Time SUBNET ####
+#### Continuous-Time SUBNET ####
 ################################
 # see: https://arxiv.org/abs/2204.09405
 #  Beintema, G. I., Schoukens, M., & Tóth, R. (2022). Continuous-time identification  of dynamic state-space models by deep subspace encoding. Presented at the 11th International Conference on Learning Representations (ICLR)
@@ -198,7 +198,7 @@ class SUBNET_CT(nn.Module):
             x = self.integrator(self.f_CT, x, u, sampling_time)
         xfuture = torch.stack(xfuture,dim=1) #has shape (Nbatch, Ntime=T, nx)
 
-        #compute output at all the future time indecies at the same time by combining the time and batch dim.
+        #compute output at all the future time indicies at the same time by combining the time and batch dim.
         fl = lambda ar: torch.flatten(ar, start_dim=0, end_dim=1) #conbine batch dim and time dim 
         yfuture_sim_flat = self.h(fl(xfuture), fl(ufuture)) if self.feedthrough else self.h(fl(xfuture)) #compute the output for all time and and batches in one go
         return torch.unflatten(yfuture_sim_flat, dim=0, sizes=(B,T)) #(Nbatch*T) -> (Nbatch, T)
