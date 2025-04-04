@@ -298,7 +298,7 @@ class SUBNET_LPV(Custom_SUBNET):
 
 
 class SUBNET_LPV_ext_scheduled(SUBNET_LPV):
-    '''LPV system identification approach LPVSUBNET with external scheduling as seen in Fig. 2 in https://arxiv.org/pdf/2204.04060'''
+    '''LPV system identification approach LPV_SUBNET with external scheduling as seen in Fig. 2 in https://arxiv.org/pdf/2204.04060'''
     def forward(self, upast: torch.Tensor, ypast: torch.Tensor, ufuture: torch.Tensor, yfuture: torch.Tensor):
         Nbatch, T = ufuture.shape[:2]
         #upasts = [upast_k, upast_k+1, u_past_k+2,...] ect
