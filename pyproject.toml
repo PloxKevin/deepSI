@@ -9,7 +9,7 @@ readme = "README.md"
 packages = [{include = "deepSI"}]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.10,<3.14"
 numpy = ">=1.25"
 tqdm = "^4.0.0"
 nonlinear_benchmarks = "^0.1.2"
