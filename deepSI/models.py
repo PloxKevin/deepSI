@@ -332,6 +332,65 @@ class CNN_SUBNET(SUBNET):
         encoder = norm.encoder(CNN_encoder(nb, nu, na, ny, nx))
         super().__init__(nu, ny, norm, nx, nb, na, f, h, encoder, validate=False)
 
+
+#############################################
+####### Rotationally Invariant CNN_SUBNET ###
+#############################################
+
+class RotInvariant_CNN_SUBNET(SUBNET):
+    """
+    Rotationally invariant CNN SUBNET that maintains invariance to rotations in image inputs.
+    
+    Uses rotationally invariant CNN layers for both encoder and output networks to ensure
+    that the learned dynamics are invariant to rotations of the input images.
+    
+    Parameters:
+    -----------
+    nu : int or str
+        Number of inputs
+    ny : tuple or list
+        Output dimensions (channels, height, width) or (height, width)
+    norm : Norm
+        Normalization object
+    nx : int
+        State dimension
+    nb : int
+        Number of past inputs to use
+    na : int
+        Number of past outputs to use
+    invariant_type : str, default='rotation_avg'
+        Type of rotational invariance ('rotation_avg' or 'steerable')
+    n_rotations : int, default=4
+        Number of rotations to average over (for rotation_avg)
+    cnn_layers : int, default=3
+        Number of CNN layers
+    base_channels : int, default=32
+        Base number of channels in CNN
+    max_order : int, default=2
+        Maximum harmonic order (for steerable convolutions)
+    """
+    def __init__(self, nu, ny, norm, nx, nb, na, invariant_type='rotation_avg', 
+                 n_rotations=4, cnn_layers=3, base_channels=32, max_order=2):
+        from deepSI.networks import CNN_vec_to_image, RotInvariant_CNN_encoder, MLP_res_net
+        
+        # Use rotationally invariant encoder
+        encoder = norm.encoder(RotInvariant_CNN_encoder(
+            nb, nu, na, ny, nx, 
+            invariant_type=invariant_type,
+            n_rotations=n_rotations,
+            cnn_layers=cnn_layers,
+            base_channels=base_channels,
+            max_order=max_order
+        ))
+        
+        # Standard output network (could also be made rotationally invariant)
+        h = norm.h(CNN_vec_to_image(nx, ny=ny))
+        
+        # Standard state dynamics
+        f = norm.f(MLP_res_net(input_size=[nx, nu], output_size=nx))
+        
+        super().__init__(nu, ny, norm, nx, nb, na, f, h, encoder, validate=False)
+
 ###########################
 ####### pHNN_SUBNET #######
 ###########################

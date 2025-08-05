@@ -492,3 +492,313 @@ class Quadratic_net(nn.Module):
     def forward(self, x):
         Q = self.net(x)
         return torch.einsum('bi,bij,bj->b', x, Q, x)
+
+
+##############################################################
+############ Rotationally Invariant CNN Modules ############
+##############################################################
+
+class RotationalPadding(nn.Module):
+    """Applies circular padding to maintain rotational symmetry."""
+    def __init__(self, padding):
+        super().__init__()
+        self.padding = padding
+    
+    def forward(self, x):
+        # Apply circular padding on height and width dimensions
+        if self.padding > 0:
+            x = torch.nn.functional.pad(x, (self.padding, self.padding, self.padding, self.padding), mode='circular')
+        return x
+
+
+class RotationallyInvariantConv2d(nn.Module):
+    """
+    Rotationally invariant 2D convolution using rotation data augmentation 
+    and weight averaging across rotations.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, 
+                 n_rotations=4, use_circular_padding=True):
+        super().__init__()
+        self.n_rotations = n_rotations
+        self.use_circular_padding = use_circular_padding
+        
+        # Base convolution layer
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=0, bias=False)
+        
+        # Circular padding for rotational symmetry
+        if use_circular_padding and padding > 0:
+            self.padding_layer = RotationalPadding(padding)
+        else:
+            self.padding_layer = None
+            if padding > 0:
+                self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=False)
+        
+        # Rotation angles
+        self.angles = [i * 360 / n_rotations for i in range(n_rotations)]
+    
+    def _rotate_tensor(self, tensor, angle):
+        """Rotate tensor by given angle (in degrees)."""
+        if angle == 0:
+            return tensor
+        elif angle == 90:
+            return torch.rot90(tensor, k=1, dims=[-2, -1])
+        elif angle == 180:
+            return torch.rot90(tensor, k=2, dims=[-2, -1])
+        elif angle == 270:
+            return torch.rot90(tensor, k=3, dims=[-2, -1])
+        else:
+            # For arbitrary angles, use affine transformation
+            rad = torch.tensor(angle * torch.pi / 180.0)
+            cos_a, sin_a = torch.cos(rad), torch.sin(rad)
+            
+            # Create rotation matrix
+            theta = torch.tensor([[cos_a, -sin_a, 0], 
+                                [sin_a, cos_a, 0]], dtype=tensor.dtype, device=tensor.device)
+            theta = theta.unsqueeze(0).repeat(tensor.size(0), 1, 1)
+            
+            # Apply affine transformation
+            grid = torch.nn.functional.affine_grid(theta, tensor.size(), align_corners=False)
+            return torch.nn.functional.grid_sample(tensor, grid, mode='bilinear', 
+                                                 padding_mode='reflection', align_corners=False)
+    
+    def forward(self, x):
+        if self.padding_layer is not None:
+            x = self.padding_layer(x)
+        
+        # Apply convolution to rotated versions and average
+        outputs = []
+        for angle in self.angles:
+            # Rotate input
+            x_rot = self._rotate_tensor(x, angle)
+            # Apply convolution
+            out_rot = self.conv(x_rot)
+            # Rotate output back
+            out_unrot = self._rotate_tensor(out_rot, -angle)
+            outputs.append(out_unrot)
+        
+        # Average across rotations
+        return torch.stack(outputs).mean(dim=0)
+
+
+class SteeerableConv2d(nn.Module):
+    """
+    Steerable convolution layer that learns rotation-equivariant features
+    using harmonic basis functions.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, max_order=2):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.max_order = max_order
+        
+        # Number of harmonic basis functions
+        self.n_basis = 2 * max_order + 1
+        
+        # Learnable coefficients for each basis function
+        self.coefficients = nn.Parameter(torch.randn(out_channels, in_channels, self.n_basis))
+        
+        # Pre-compute harmonic basis functions
+        self.register_buffer('basis_functions', self._compute_harmonic_basis())
+    
+    def _compute_harmonic_basis(self):
+        """Compute harmonic basis functions for steerable filters."""
+        kh, kw = self.kernel_size
+        y, x = torch.meshgrid(torch.linspace(-1, 1, kh), torch.linspace(-1, 1, kw), indexing='ij')
+        
+        # Convert to polar coordinates
+        r = torch.sqrt(x**2 + y**2)
+        theta = torch.atan2(y, x)
+        
+        # Compute harmonic basis functions
+        basis = []
+        for m in range(-self.max_order, self.max_order + 1):
+            if m == 0:
+                basis.append(torch.ones_like(r))
+            else:
+                # Complex exponential basis (real part)
+                harmonic = torch.cos(m * theta) * torch.exp(-r**2)
+                basis.append(harmonic)
+        
+        return torch.stack(basis)  # Shape: (n_basis, kh, kw)
+    
+    def forward(self, x):
+        batch_size = x.size(0)
+        
+        # Construct filters from harmonic basis
+        filters = torch.einsum('oim,mkl->oikl', self.coefficients, self.basis_functions)
+        
+        # Reshape for group convolution
+        filters = filters.view(self.out_channels, self.in_channels, *self.kernel_size)
+        
+        # Apply convolution
+        return torch.nn.functional.conv2d(x, filters, padding='same')
+
+
+class RotationallyInvariantBlock(nn.Module):
+    """
+    Complete rotationally invariant convolutional block with normalization and activation.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, 
+                 invariant_type='rotation_avg', n_rotations=4, activation=nn.ReLU, 
+                 use_batch_norm=True, max_order=2):
+        super().__init__()
+        
+        self.invariant_type = invariant_type
+        
+        # Choose invariant convolution type
+        if invariant_type == 'rotation_avg':
+            self.conv = RotationallyInvariantConv2d(
+                in_channels, out_channels, kernel_size, stride=stride, 
+                padding=kernel_size//2, n_rotations=n_rotations
+            )
+        elif invariant_type == 'steerable':
+            self.conv = SteeerableConv2d(in_channels, out_channels, kernel_size, max_order=max_order)
+            if stride > 1:
+                self.downsample = nn.MaxPool2d(stride, stride)
+            else:
+                self.downsample = None
+        else:
+            raise ValueError(f"Unknown invariant_type: {invariant_type}")
+        
+        # Batch normalization
+        if use_batch_norm:
+            self.bn = nn.BatchNorm2d(out_channels)
+        else:
+            self.bn = None
+        
+        # Activation
+        self.activation = activation() if activation is not None else None
+    
+    def forward(self, x):
+        x = self.conv(x)
+        
+        if hasattr(self, 'downsample') and self.downsample is not None:
+            x = self.downsample(x)
+        
+        if self.bn is not None:
+            x = self.bn(x)
+        
+        if self.activation is not None:
+            x = self.activation(x)
+        
+        return x
+
+
+class RotationallyInvariantCNN(nn.Module):
+    """
+    Complete rotationally invariant CNN for use in SUBNET architectures.
+    """
+    def __init__(self, input_shape, n_layers=3, base_channels=32, channel_multiplier=2,
+                 invariant_type='rotation_avg', n_rotations=4, kernel_size=3,
+                 output_size=None, use_global_pooling=True, max_order=2):
+        super().__init__()
+        
+        if isinstance(input_shape, (list, tuple)) and len(input_shape) == 3:
+            in_channels, height, width = input_shape
+        else:
+            raise ValueError("input_shape must be (channels, height, width)")
+        
+        self.use_global_pooling = use_global_pooling
+        
+        # Build convolutional layers
+        layers = []
+        current_channels = in_channels
+        
+        for i in range(n_layers):
+            out_channels = base_channels * (channel_multiplier ** i)
+            stride = 2 if i > 0 else 1  # Downsample after first layer
+            
+            layers.append(RotationallyInvariantBlock(
+                current_channels, out_channels, kernel_size=kernel_size, stride=stride,
+                invariant_type=invariant_type, n_rotations=n_rotations, 
+                max_order=max_order
+            ))
+            current_channels = out_channels
+        
+        self.conv_layers = nn.Sequential(*layers)
+        
+        # Global pooling or flattening
+        if use_global_pooling:
+            self.global_pool = nn.AdaptiveAvgPool2d(1)
+            final_size = current_channels
+        else:
+            # Calculate output size after convolutions
+            with torch.no_grad():
+                dummy_input = torch.randn(1, in_channels, height, width)
+                dummy_output = self.conv_layers(dummy_input)
+                final_size = dummy_output.numel()
+            self.global_pool = nn.Flatten()
+        
+        # Optional final linear layer
+        if output_size is not None:
+            self.final_linear = nn.Linear(final_size, output_size)
+        else:
+            self.final_linear = None
+            
+        self.output_size = output_size if output_size is not None else final_size
+    
+    def forward(self, x):
+        x = self.conv_layers(x)
+        x = self.global_pool(x)
+        
+        if x.dim() > 2:
+            x = x.view(x.size(0), -1)
+        
+        if self.final_linear is not None:
+            x = self.final_linear(x)
+        
+        return x
+
+
+class RotInvariant_CNN_encoder(nn.Module):
+    """
+    Rotationally invariant CNN encoder for SUBNET architectures.
+    Replaces the standard CNN_encoder with rotation-invariant processing.
+    """
+    def __init__(self, nb, nu, na, ny, nx, n_hidden_nodes=64, n_hidden_layers=2, 
+                 activation=nn.Tanh, invariant_type='rotation_avg', n_rotations=4,
+                 cnn_layers=3, base_channels=32, max_order=2):
+        super().__init__()
+        self.nx = nx
+        self.nu = tuple() if nu=='scalar' else ((nu,) if isinstance(nu,int) else nu)
+        
+        # Process ny shape similar to CNN_encoder
+        assert isinstance(ny,(list,tuple)) and (len(ny)==2 or len(ny)==3), \
+            'ny should have 2 or 3 dimensions in the form (nchannels, height, width) or (height, width)'
+        
+        if len(ny) == 2:
+            input_shape = (na, ny[0], ny[1])  # (time_steps, height, width)
+        else:
+            input_shape = (ny[0]*na, ny[1], ny[2])  # (channels*time_steps, height, width)
+        
+        # Rotationally invariant CNN
+        self.CNN = RotationallyInvariantCNN(
+            input_shape=input_shape,
+            n_layers=cnn_layers,
+            base_channels=base_channels,
+            invariant_type=invariant_type,
+            n_rotations=n_rotations,
+            max_order=max_order,
+            use_global_pooling=True
+        )
+        
+        # Combine CNN output with past inputs
+        self.net = MLP_res_net(
+            input_size=nb*np.prod(self.nu, dtype=int) + self.CNN.output_size,
+            output_size=nx, 
+            n_hidden_nodes=n_hidden_nodes, 
+            n_hidden_layers=n_hidden_layers, 
+            activation=activation
+        )
+    
+    def forward(self, upast, ypast):
+        # Reshape ypast similar to CNN_encoder
+        ypast = ypast.view(ypast.shape[0], -1, ypast.shape[-2], ypast.shape[-1])
+        
+        # Process with rotationally invariant CNN
+        ypast_encode = self.CNN(ypast)
+        
+        # Combine with past inputs
+        net_in = torch.cat([upast.view(upast.shape[0], -1), ypast_encode.view(ypast.shape[0], -1)], axis=1)
+        return self.net(net_in)
