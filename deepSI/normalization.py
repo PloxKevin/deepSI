@@ -69,14 +69,29 @@ def get_nu_ny_and_auto_norm(data: nlb.Input_output_data | list):
         data = [data]
     u = np.concatenate([d.u for d in data],axis=0)
     y = np.concatenate([d.y for d in data],axis=0)
-    assert u.ndim<=2 and y.ndim<=2, f'auto norm only defined for scalar or vector outputs y and input u {y.shape=} {u.shape=}'
+    
+    # Handle different data types
+    if u.ndim > 2 or y.ndim > 3:
+        raise ValueError(f'auto norm only supports up to 2D inputs and 3D outputs (images), got u.shape={u.shape}, y.shape={y.shape}')
+    
     sampling_time = data[0].sampling_time
     assert all(sampling_time==d.sampling_time for d in data), f"the given datasets don't have all the sample sampling_time set {[d.sampling_time for d in data]=}"
+    
+    # Compute normalization statistics
     umean, ustd = u.mean(0), u.std(0)
-    ymean, ystd = y.mean(0), y.std(0)
+    
+    if y.ndim <= 2:
+        # Original behavior for vector/scalar outputs
+        ymean, ystd = y.mean(0), y.std(0)
+        ny = 'scalar' if y.ndim==1 else y.shape[1]
+    else:
+        # Handle image data (3D: samples x height x width)
+        ymean, ystd = y.mean(axis=0), y.std(axis=0)  # Mean/std over samples, keep spatial dims
+        ny = y.shape[1:]  # Image dimensions (height, width) or (channels, height, width)
+    
     norm = Norm(umean, ustd, ymean, ystd, sampling_time)
     nu = 'scalar' if u.ndim==1 else u.shape[1]
-    ny = 'scalar' if y.ndim==1 else y.shape[1]
+    
     return nu, ny, norm
 
 

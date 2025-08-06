@@ -6,10 +6,29 @@ from image data while maintaining invariance to rotations.
 """
 
 import numpy as np
-import torch
-import deepSI as dsi
-from deepSI import RotInvariant_CNN_SUBNET, RotationallyInvariantCNN
-from nonlinear_benchmarks import Input_output_data
+import sys
+import os
+
+# Add the parent directory to Python path to import local deepSI
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    import torch
+except ImportError:
+    print("Error: PyTorch is not installed. Please install it with:")
+    print("pip install torch")
+    sys.exit(1)
+
+try:
+    import deepSI as dsi
+    from deepSI.models import RotInvariant_CNN_SUBNET
+    from deepSI.networks import RotationallyInvariantCNN
+    from nonlinear_benchmarks import Input_output_data
+    print("✓ Successfully imported deepSI modules")
+except ImportError as e:
+    print(f"Error importing deepSI modules: {e}")
+    print("Make sure you're running this from the deepSI directory")
+    sys.exit(1)
 
 def create_rotating_image_data(n_samples=1000, image_size=(32, 32), rotation_rate=0.1):
     """
@@ -38,45 +57,33 @@ def create_rotating_image_data(n_samples=1000, image_size=(32, 32), rotation_rat
     h, w = image_size
     y = np.zeros((n_samples, h, w))
     
-    # Create a simple pattern that rotates
+    # Create coordinate grids
+    y_coords, x_coords = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
     center_h, center_w = h // 2, w // 2
     
     for t in range(n_samples):
-        # Create a simple rotating pattern
+        # Create a simple rotating pattern using numpy's built-in rotation
         angle = t * rotation_rate + u[t, 0] * 0.5  # Input affects rotation
         
-        # Create a simple cross pattern
-        img = np.zeros((h, w))
-        
-        # Horizontal line
-        img[center_h-1:center_h+2, :] = 1.0
-        
-        # Vertical line  
-        img[:, center_w-1:center_w+2] = 1.0
-        
-        # Rotate the pattern
-        cos_a, sin_a = np.cos(angle), np.sin(angle)
-        
-        # Simple rotation for demonstration (could use more sophisticated method)
-        y_coords, x_coords = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        # Create a simple pattern with diagonal stripes
         x_centered = x_coords - center_w
         y_centered = y_coords - center_h
         
-        x_rot = x_centered * cos_a - y_centered * sin_a + center_w
-        y_rot = x_centered * sin_a + y_centered * cos_a + center_h
+        # Rotate coordinates
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        x_rot = x_centered * cos_a - y_centered * sin_a
+        y_rot = x_centered * sin_a + y_centered * cos_a
         
-        # Interpolate rotated image (simple nearest neighbor)
-        valid_mask = (x_rot >= 0) & (x_rot < w) & (y_rot >= 0) & (y_rot < h)
-        x_rot_int = np.round(x_rot).astype(int)
-        y_rot_int = np.round(y_rot).astype(int)
+        # Create rotating pattern (diagonal stripes)
+        pattern = np.sin(0.2 * (x_rot + y_rot)) * np.exp(-(x_rot**2 + y_rot**2) / (h*w/8))
         
-        rotated_img = np.zeros((h, w))
-        rotated_img[valid_mask] = img[y_rot_int[valid_mask], x_rot_int[valid_mask]]
+        # Add some structure
+        pattern += 0.3 * np.sin(0.15 * x_rot) * np.exp(-y_rot**2 / (h/4)**2)
         
         # Add some noise
-        rotated_img += np.random.randn(h, w) * 0.05
+        pattern += np.random.randn(h, w) * 0.05
         
-        y[t] = rotated_img
+        y[t] = pattern
     
     return Input_output_data(u=u, y=y)
 
@@ -96,13 +103,18 @@ def main():
     
     print(f"Data shapes: u={data.u.shape}, y={data.y.shape}")
     
-    # Get data characteristics and normalization
+    # Get data characteristics and normalization (now supports image data)
     nu, ny, norm = dsi.get_nu_ny_and_auto_norm(train_data)
     print(f"nu={nu}, ny={ny}")
     
     # Create standard CNN SUBNET for comparison
     print("\nTraining standard CNN SUBNET...")
-    model_standard = dsi.CNN_SUBNET(nu, ny, norm, nx=8, nb=10, na=10)
+    try:
+        model_standard = dsi.CNN_SUBNET(nu, ny, norm, nx=8, nb=10, na=10)
+    except Exception as e:
+        print(f"Error creating CNN_SUBNET: {e}")
+        print("Using regular SUBNET instead...")
+        model_standard = dsi.SUBNET(nu, ny, norm, nx=8, nb=10, na=10)
     
     # Train standard model
     train_dict_standard = dsi.fit(

@@ -1,6 +1,7 @@
 import torch
 from torch.nn import Sequential
 from torch import nn
+import numpy as np
 
 ###########################################################
 #### Multi layer peceptron/feed forward neural network ####
@@ -96,8 +97,6 @@ def rk45_integrator(f, x, u, dt, n_steps=1):
 ##################################
 ##### LPV SUBNET networks ########
 ##################################
-
-import numpy as np
 class Bilinear(nn.Module):
     '''A(p) = A_0 + A_1 p_1 + A_2 p_2 + ... + A_n_schedual p_n_schedual'''
     def __init__(self, n_in, n_out, n_schedual, std_output=None, std_input=None, scale_fac=None):
